@@ -43,10 +43,21 @@ The social-profile IDs appear to use an `A` prefix (for example, `A151`) while t
 
 The social table contains repeated records per customer. It is therefore aggregated to one row per customer before merging. A direct many-to-many join would multiply transaction rows and corrupt the dataset.
 
+## Multimodal preprocessing notebooks
+
+### Facial images
+Run [`notebooks/02_image_preprocessing.ipynb`](notebooks/02_image_preprocessing.ipynb) after placing consented images in `data/images/raw/`. It audits participant/expression labels, detects and crops faces, creates controlled augmentations, and exports HOG features to `data/images/processed/image_features.csv`.
+
+Participant mapping: Ella = participant_01, King = participant_02, Nicole = participant_03, Sarah = participant_04.
+
+### Voice recordings
+Run [`notebooks/03_audio_preprocessing.ipynb`](notebooks/03_audio_preprocessing.ipynb) after placing consented WAV recordings in `data/audio/raw/`. Use one folder per participant and phrase subfolders named `yes_approve` and `confirm_transaction`. The notebook visualizes waveforms/spectrograms, applies pitch/time/noise augmentation, and exports MFCC, spectral roll-off, and RMS-energy features to `data/audio/processed/audio_features.csv`.
+
+Raw facial images and voice recordings contain personal/biometric information. Keep them private and do not commit them to a public repository without explicit informed consent and approval.
+
 ## Assignment stages still to complete
 
-- Collect and document consented facial samples (neutral, smiling, surprised), then augment and extract image features.
-- Collect at least two voice samples per participant, inspect waveforms/spectrograms, augment, and extract MFCC, spectral roll-off, and energy features.
+- Complete and validate the facial and voice preprocessing notebooks using the group's real consented recordings.
 - Train and evaluate the face, voice-verification, and product-category models.
 - Integrate the model outputs into the authorized/unauthorized transaction simulation.
 - Add the final report, video, contribution record, and processed feature datasets.
