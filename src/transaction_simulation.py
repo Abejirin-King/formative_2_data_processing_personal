@@ -1,244 +1,209 @@
-"""Multimodal transaction CLI using user-supplied face and voice files.
+"""Recorded-sample multimodal transaction authorization demo.
 
 Run from the repository root:
     python src/transaction_simulation.py
 
-This is a small classroom demonstration, not production authentication.
-It performs closed-set identity classification and has no liveness detection.
+This is an offline classroom simulation. It uses held-out feature rows created
+by the preprocessing notebooks; it does not capture live camera/microphone data
+or provide production-grade biometric authentication.
 """
 from pathlib import Path
-import argparse
-import sys
 
-import cv2
 import joblib
 import numpy as np
 import pandas as pd
-from scipy.io import wavfile
-from scipy.signal import resample_poly, stft
-from scipy.fft import dct
-from math import gcd
-from skimage.feature import hog
+from sklearn.model_selection import StratifiedGroupKFold
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
+PROCESSED = DATA / "processed"
 MODEL_DIR = ROOT / "models"
-FEATURE_DIR = DATA / "processed"
-IMAGE_FEATURES = DATA / "images" / "processed" / "image_features.csv"
-AUDIO_FEATURES = DATA / "audio" / "processed" / "audio_features.csv"
-PRODUCT_FEATURES = FEATURE_DIR / "tabular_model_features.csv"
 
-MODELS = {
+FACE_FEATURES = DATA / "images" / "processed" / "image_features.csv"
+VOICE_FEATURES = DATA / "audio" / "processed" / "audio_features.csv"
+PRODUCT_FEATURES = PROCESSED / "tabular_model_features.csv"
+MERGED_DATA = PROCESSED / "customer_transactions_social_merged.csv"
+
+MODEL_PATHS = {
     "face": MODEL_DIR / "face_svm.joblib",
-    "voice": MODEL_DIR / "voice_svm.joblib",
+    "voice": MODEL_DIR / "voice_random_forest.joblib",
     "product": MODEL_DIR / "product_random_forest.joblib",
 }
+
 PARTICIPANTS = {
     "participant_01": "Ella",
     "participant_02": "King",
     "participant_03": "Nicole",
     "participant_04": "Sarah",
 }
-TARGET_SR = 16000
 
 
-def check_inputs(face_path, voice_path):
-    for path in [face_path, voice_path, IMAGE_FEATURES, AUDIO_FEATURES,
-                 PRODUCT_FEATURES, *MODELS.values()]:
-        if not Path(path).is_file():
-            raise FileNotFoundError(f"Required file not found: {path}")
-
-
-def load_face_detector():
-    cascade_path = DATA / "models" / "haarcascade_frontalface_default.xml"
-    if not cascade_path.is_file():
+def require_files():
+    required = [FACE_FEATURES, VOICE_FEATURES, PRODUCT_FEATURES, MERGED_DATA]
+    required.extend(MODEL_PATHS.values())
+    missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
+    if missing:
         raise FileNotFoundError(
-            f"Missing Haar cascade: {cascade_path}. Run notebook 02 first."
+            "Required inputs or trained models are missing:\n- "
+            + "\n- ".join(missing)
+            + "\nRun notebooks 01-04 first and keep the generated models locally."
         )
-    detector = cv2.CascadeClassifier(str(cascade_path))
-    if detector.empty():
-        raise RuntimeError(f"Could not load face detector: {cascade_path}")
-    return detector
 
 
-def face_vector(image_path):
-    detector = load_face_detector()
-    image = cv2.imread(str(image_path))
-    if image is None:
-        raise ValueError(f"Could not read image: {image_path}")
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = detector.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40)
+def load_demo_samples():
+    """Recreate the same held-out biometric samples used in notebook 04."""
+    face_df = pd.read_csv(FACE_FEATURES)
+    face_meta = {"source_path", "participant_id", "augmentation"}
+    face_cols = [c for c in face_df.columns if c.startswith("hog_")]
+    if not face_cols:
+        raise ValueError("No HOG columns found in image_features.csv.")
+
+    face_originals = face_df[face_df["augmentation"].eq("original")].copy()
+    face_samples = {}
+    for participant, group in face_originals.groupby("participant_id"):
+        paths = sorted(group["source_path"].dropna().unique())
+        if len(paths) < 2:
+            raise ValueError(
+                f"{participant} needs at least two original face images; "
+                "the training notebook's held-out split cannot be reproduced."
+            )
+        # Notebook 04 reserves the final sorted original source for testing.
+        selected_path = paths[-1]
+        row = group[group["source_path"].eq(selected_path)].iloc[0]
+        face_samples[participant] = row[face_cols].astype(float).to_numpy()
+
+    voice_df = pd.read_csv(VOICE_FEATURES)
+    voice_meta = {"audio_path", "source_path", "participant_id", "phrase", "augmentation"}
+    voice_cols = [
+        c for c in voice_df.columns
+        if c not in voice_meta and pd.api.types.is_numeric_dtype(voice_df[c])
+    ]
+    voice_originals = voice_df[voice_df["augmentation"].eq("original")].copy()
+    voice_samples = {}
+    for participant, group in voice_originals.groupby("participant_id"):
+        held_out = group[
+            group["phrase"].astype(str).str.lower().eq("confirm_transaction")
+        ]
+        if held_out.empty:
+            raise ValueError(f"No held-out confirm_transaction recording for {participant}.")
+        voice_samples[participant] = held_out.iloc[0][voice_cols].astype(float).to_numpy()
+
+    product_df = pd.read_csv(PRODUCT_FEATURES)
+    merged_df = pd.read_csv(MERGED_DATA)
+    if len(product_df) != len(merged_df):
+        raise ValueError("Product features and merged data are not row-aligned.")
+
+    target = "product_category"
+    group_col = "customer_id_legacy"
+    excluded = {
+        target, "transaction_id", "customer_id_legacy", "customer_id_candidate",
+        "customer_id_new", "purchase_amount", "customer_rating", "purchase_date"
+    }
+    if target not in product_df or group_col not in merged_df:
+        raise ValueError("Product feature data is missing the target or customer group.")
+
+    X_product = product_df.drop(
+        columns=[c for c in excluded if c in product_df.columns]
     )
-    if len(faces) == 0:
-        raise ValueError("No face detected in the supplied image.")
-    x, y, w, h = max(faces, key=lambda box: box[2] * box[3])
-    margin = int(0.15 * max(w, h))
-    x0, y0 = max(0, x - margin), max(0, y - margin)
-    x1, y1 = min(gray.shape[1], x + w + margin), min(gray.shape[0], y + h + margin)
-    crop = cv2.resize(gray[y0:y1, x0:x1], (128, 128), interpolation=cv2.INTER_AREA)
-    vector = hog(
-        crop, orientations=9, pixels_per_cell=(8, 8),
-        cells_per_block=(2, 2), block_norm="L2-Hys", feature_vector=True
-    )
-    columns = [c for c in pd.read_csv(IMAGE_FEATURES, nrows=0).columns if c.startswith("hog_")]
-    return pd.DataFrame([vector], columns=columns)
+    y_product = product_df[target].astype(str)
+    groups = merged_df[group_col].astype(str)
+    splitter = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+    _, test_idx = next(splitter.split(X_product, y_product, groups))
+
+    # The model notebook trains on the complementary first fold.
+    product_test = X_product.iloc[test_idx].copy().reset_index(drop=True)
+    return face_samples, face_cols, voice_samples, voice_cols, product_test
 
 
-def load_audio(path, target_sr=TARGET_SR):
-    sr, raw = wavfile.read(str(path))
-    if np.issubdtype(raw.dtype, np.integer):
-        info = np.iinfo(raw.dtype)
-        signal = raw.astype(np.float64) / max(abs(info.min), info.max)
-    else:
-        signal = raw.astype(np.float64)
-    if signal.ndim == 2:
-        signal = signal.mean(axis=1)
-    signal = np.nan_to_num(signal)
-    if sr != target_sr:
-        common = gcd(int(sr), int(target_sr))
-        signal = resample_poly(signal, target_sr // common, sr // common)
-    if len(signal) < int(0.3 * target_sr):
-        raise ValueError("Audio is too short. Record at least 0.3 seconds.")
-    if np.sqrt(np.mean(signal ** 2)) < 1e-5:
-        raise ValueError("Audio is silent or nearly silent.")
-    peak = np.max(np.abs(signal))
-    if peak > 1:
-        signal = signal / peak
-    return target_sr, signal.astype(np.float32)
+def choose(options, prompt):
+    options = list(options)
+    print()
+    for i, value in enumerate(options, start=1):
+        label = PARTICIPANTS.get(value, str(value))
+        print(f"  {i}. {label} ({value})")
+    while True:
+        raw = input(prompt).strip()
+        try:
+            index = int(raw) - 1
+            if 0 <= index < len(options):
+                return options[index]
+        except ValueError:
+            pass
+        print(f"Enter a number from 1 to {len(options)}.")
 
 
-def mel_to_hz(mel):
-    return 700 * (10 ** (mel / 2595) - 1)
-
-
-def hz_to_mel(hz):
-    return 2595 * np.log10(1 + hz / 700)
-
-
-def mel_filterbank(sr, n_fft=512, n_mels=26):
-    points = np.linspace(hz_to_mel(0), hz_to_mel(sr / 2), n_mels + 2)
-    bins = np.floor((n_fft + 1) * mel_to_hz(points) / sr).astype(int)
-    filters = np.zeros((n_mels, n_fft // 2 + 1))
-    for m in range(1, n_mels + 1):
-        left, center, right = bins[m-1:m+2]
-        center = max(center, left + 1)
-        right = max(right, center + 1)
-        for k in range(left, min(center, filters.shape[1])):
-            filters[m-1, k] = (k-left) / (center-left)
-        for k in range(center, min(right, filters.shape[1])):
-            filters[m-1, k] = (right-k) / (right-center)
-    return filters
-
-
-def audio_vector(path):
-    sr, signal = load_audio(path)
-    _, _, z = stft(signal, fs=sr, nperseg=512, noverlap=352,
-                   boundary=None, padded=False)
-    power = np.abs(z) ** 2
-    mel_power = mel_filterbank(sr) @ power
-    mfcc = dct(np.log(mel_power + 1e-10), type=2, axis=0, norm="ortho")[:13]
-    freqs = np.linspace(0, sr / 2, power.shape[0])
-    cumulative = np.cumsum(power, axis=0)
-    totals = cumulative[-1, :] + 1e-12
-    rolloff_idx = np.argmax(cumulative >= 0.85 * totals[None, :], axis=0)
-    rolloff = freqs[rolloff_idx]
-    frame_energy = np.sqrt(np.mean(np.abs(z) ** 2, axis=0))
-    values = {}
-    for i in range(13):
-        values[f"mfcc_{i+1:02d}_mean"] = float(np.mean(mfcc[i]))
-        values[f"mfcc_{i+1:02d}_std"] = float(np.std(mfcc[i]))
-    values["spectral_rolloff_mean"] = float(np.mean(rolloff))
-    values["spectral_rolloff_std"] = float(np.std(rolloff))
-    values["rms_energy_mean"] = float(np.mean(frame_energy))
-    values["rms_energy_std"] = float(np.std(frame_energy))
-    values["duration_seconds"] = float(len(signal) / sr)
-    columns = [c for c in pd.read_csv(AUDIO_FEATURES, nrows=0).columns
-               if c not in {"audio_path", "source_path", "participant_id", "phrase", "augmentation"}]
-    return pd.DataFrame([[values[c] for c in columns]], columns=columns)
-
-
-def identify(model, features):
-    prediction = str(model.predict(features)[0])
-    probability = None
+def identify(model, vector):
+    vector = np.asarray(vector, dtype=float).reshape(1, -1)
+    prediction = str(model.predict(vector)[0])
+    confidence = None
     if hasattr(model, "predict_proba"):
-        probability = float(np.max(model.predict_proba(features)[0]))
-    return prediction, probability
-
-
-def display_identity(identity, probability):
-    label = PARTICIPANTS.get(identity, identity)
-    suffix = f" (model score {probability:.1%})" if probability is not None else ""
-    print(f"{label} [{identity}]{suffix}")
+        probabilities = model.predict_proba(vector)[0]
+        confidence = float(np.max(probabilities))
+    return prediction, confidence
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Face + voice transaction authorization demo")
-    parser.add_argument("--face", required=True, help="Path to the face image to verify")
-    parser.add_argument("--voice", required=True, help="Path to the voice WAV recording to verify")
-    args = parser.parse_args()
-    face_path, voice_path = Path(args.face), Path(args.voice)
-    if not face_path.is_absolute():
-        face_path = ROOT / face_path
-    if not voice_path.is_absolute():
-        voice_path = ROOT / voice_path
-    check_inputs(face_path, voice_path)
+    require_files()
+    face_model = joblib.load(MODEL_PATHS["face"])
+    voice_model = joblib.load(MODEL_PATHS["voice"])
+    product_model = joblib.load(MODEL_PATHS["product"])
 
-    face_model = joblib.load(MODELS["face"])
-    voice_model = joblib.load(MODELS["voice"])
-    product_model = joblib.load(MODELS["product"])
+    face_samples, _, voice_samples, _, product_test = load_demo_samples()
+    participants = [p for p in PARTICIPANTS if p in face_samples and p in voice_samples]
+    if len(participants) < 2:
+        raise ValueError("At least two participants with held-out face and voice samples are required.")
 
-    print("\nMULTIMODAL TRANSACTION SIMULATION")
-    print("---------------------------------")
-    claimed = input("Enter the account holder's participant ID (e.g. participant_01): ").strip()
-    if claimed not in PARTICIPANTS:
-        print("Unknown account ID. Transaction rejected.")
-        return 1
+    print("\nMULTIMODAL TRANSACTION AUTHORIZATION")
+    print("-----------------------------------")
+    print("Recorded-sample classroom simulation. No live biometric capture is performed.")
+    claimed = choose(participants, "Select the account holder being claimed: ")
+    face_source = choose(participants, "Select whose held-out face sample is presented: ")
+    voice_source = choose(participants, "Select whose held-out voice sample is presented: ")
 
-    try:
-        face_features = face_vector(face_path)
-        face_identity, face_score = identify(face_model, face_features)
-        print("\nFACE CHECK")
-        print("Model identified:", end=" ")
-        display_identity(face_identity, face_score)
-        if face_identity != claimed:
-            print("TRANSACTION REJECTED: face does not match the claimed account.")
-            return 1
+    face_prediction, face_confidence = identify(face_model, face_samples[face_source])
+    voice_prediction, voice_confidence = identify(voice_model, voice_samples[voice_source])
 
-        print("\nFace check passed. Voice verification is now required.")
-        voice_features = audio_vector(voice_path)
-        voice_identity, voice_score = identify(voice_model, voice_features)
-        print("\nVOICE CHECK")
-        print("Model identified:", end=" ")
-        display_identity(voice_identity, voice_score)
-        if voice_identity != claimed:
-            print("TRANSACTION REJECTED: voice does not match the claimed account.")
-            return 1
+    face_ok = face_prediction == claimed
+    voice_ok = voice_prediction == claimed
+    print("\nBIOMETRIC CHECKS")
+    print("----------------")
+    print(
+        f"Face model identified: {PARTICIPANTS.get(face_prediction, face_prediction)}"
+        + (f" (model probability: {face_confidence:.1%})" if face_confidence is not None else "")
+    )
+    print("Face matches claimed account:", "PASS" if face_ok else "FAIL")
+    print(
+        f"Voice model identified: {PARTICIPANTS.get(voice_prediction, voice_prediction)}"
+        + (f" (model probability: {voice_confidence:.1%})" if voice_confidence is not None else "")
+    )
+    print("Voice matches claimed account:", "PASS" if voice_ok else "FAIL")
 
-        print(f"VOICE APPROVED: {PARTICIPANTS[claimed]} is verified.")
-        print("\nBoth checks passed. Executing product-category prediction...")
+    if not (face_ok and voice_ok):
+        print("\nTRANSACTION REJECTED: both biometric identity checks must match.")
+        return
 
-        product_df = pd.read_csv(PRODUCT_FEATURES)
-        target = "product_category"
-        excluded = {
-            target, "transaction_id", "customer_id_legacy", "customer_id_candidate",
-            "customer_id_new", "purchase_amount", "customer_rating", "purchase_date"
-        }
-        X_product = product_df.drop(columns=[c for c in excluded if c in product_df.columns])
-        if X_product.empty:
-            raise ValueError("No product predictor columns are available.")
-        # Use a representative real feature row from the prepared customer data.
-        prediction = str(product_model.predict(X_product.iloc[[0]])[0])
-        print("\nTRANSACTION AUTHORIZED")
-        print("----------------------")
-        print(f"Verified user: {PARTICIPANTS[claimed]} ({claimed})")
-        print(f"Recommended product category: {prediction}")
-        print("Demo complete. This is a classroom prototype, not production authentication.")
-        return 0
-    except Exception as exc:
-        print(f"Could not complete verification: {exc}")
-        return 1
+    print("\nTRANSACTION AUTHORIZED")
+    print("----------------------")
+    if product_test.empty:
+        print("No held-out customer transaction is available for product prediction.")
+        return
+
+    row_number = int(np.random.default_rng(42).integers(0, len(product_test)))
+    product_row = product_test.iloc[[row_number]]
+    category = str(product_model.predict(product_row)[0])
+    print(f"Product-category suggestion for demonstration: {category}")
+    if hasattr(product_model, "predict_proba"):
+        probs = product_model.predict_proba(product_row)[0]
+        ranking = sorted(
+            zip(product_model.classes_, probs),
+            key=lambda item: item[1],
+            reverse=True
+        )[:3]
+        print("Top model scores (not calibrated purchase probabilities):")
+        for label, score in ranking:
+            print(f"  {label}: {score:.1%}")
+    print("\nNote: the product model performed weakly in evaluation; treat this as an experimental suggestion.")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
