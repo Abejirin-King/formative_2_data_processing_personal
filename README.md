@@ -55,10 +55,13 @@ Run [`notebooks/03_audio_preprocessing.ipynb`](notebooks/03_audio_preprocessing.
 
 Raw facial images and voice recordings contain personal/biometric information. Keep them private and do not commit them to a public repository without explicit informed consent and approval.
 
+### Model training and evaluation
+Run [`notebooks/04_model_training_evaluation.ipynb`](notebooks/04_model_training_evaluation.ipynb) after the tabular, image, and audio feature CSVs have been generated. It trains baseline HOG-based facial identity, MFCC-based voiceprint identification, and product-category classifiers. It uses source-level holdouts for biometric data and customer-grouped cross-validation for product-category prediction. Model files and evaluation CSVs are saved locally under `models/` and `data/processed/model_evaluation/`.
+
 ## Assignment stages still to complete
 
 - Complete and validate the facial and voice preprocessing notebooks using the group's real consented recordings.
-- Train and evaluate the face, voice-verification, and product-category models.
+- Run and review the baseline model training/evaluation notebook; interpret biometric scores cautiously because the genuine sample count is small.
 - Integrate the model outputs into the authorized/unauthorized transaction simulation.
 - Add the final report, video, contribution record, and processed feature datasets.
 
