@@ -80,3 +80,22 @@ The simulation loads the locally saved face SVM, voice Random Forest, and produc
 The script deliberately uses held-out feature rows from the notebooks rather than pretending to capture live camera or microphone input. This makes the demo reproducible, but it is not live biometric verification. It has no liveness detection, anti-spoofing, secure enrollment, or production security controls. The face and voice test sets each contain only four samples, so their perfect test scores are not reliable estimates of real-world performance. The product-category model also performed weakly and its suggestion should be treated as experimental.
 
 The trained `.joblib` files are generated locally by notebook 04 and are not expected to be committed. Keep raw face images and voice recordings private; do not upload biometric files to this public repository.
+
+
+## 5. Multimodal transaction simulation
+
+The command-line demo accepts an image file and a WAV recording supplied by the operator. It runs the face identity model first. Only if the face matches the claimed account does it continue to voice verification. Only when both identity predictions match does it run the product-category model and display the verified participant and recommendation.
+
+Run from the repository root after notebooks 01–04 have been executed and the generated model files are available locally:
+
+```bash
+python src/transaction_simulation.py --face "data/images/raw/Ella/neutral/your_image.jpg" --voice "data/audio/raw/Ella/confirm_transaction/your_recording.wav"
+```
+
+Replace the example paths with the actual image and WAV file paths. The WAV input should be a clear recording, preferably mono, of at least 0.3 seconds. You will be prompted for the claimed participant ID (for example, `participant_01`).
+
+**Unauthorized-attempt demonstrations:**
+- Claim `participant_01` but supply another participant's face image. The transaction should be rejected before voice verification.
+- Supply the correct participant's face but another participant's voice WAV. The transaction should be rejected at the voice check.
+
+This is a classroom demonstration using HOG and handcrafted audio features. It is closed-set identification, not production-grade biometric authentication: it has no liveness detection, anti-spoofing, or reliable protection against photographs/recordings. Do not use it to authorize real financial transactions.
