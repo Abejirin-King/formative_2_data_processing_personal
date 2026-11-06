@@ -66,3 +66,18 @@ Run [`notebooks/04_model_training_evaluation.ipynb`](notebooks/04_model_training
 - Add the final report, video, contribution record, and processed feature datasets.
 
 Do not fabricate face or voice data. Those parts must be collected from the actual group participants with their consent.
+
+
+## Multimodal transaction simulation
+
+After running notebooks 01-04, run the command-line demonstration from the repository root:
+
+```bash
+python src/transaction_simulation.py
+```
+
+The simulation loads the locally saved face SVM, voice Random Forest, and product-category Random Forest models. It asks the operator to select the account being claimed, then select which participant's held-out face and voice feature samples are presented. A transaction is approved only when **both** model-predicted identities match the claimed account. Choosing another participant's sample demonstrates an unauthorized face or voice attempt. If authorization succeeds, the product model produces an experimental category suggestion.
+
+The script deliberately uses held-out feature rows from the notebooks rather than pretending to capture live camera or microphone input. This makes the demo reproducible, but it is not live biometric verification. It has no liveness detection, anti-spoofing, secure enrollment, or production security controls. The face and voice test sets each contain only four samples, so their perfect test scores are not reliable estimates of real-world performance. The product-category model also performed weakly and its suggestion should be treated as experimental.
+
+The trained `.joblib` files are generated locally by notebook 04 and are not expected to be committed. Keep raw face images and voice recordings private; do not upload biometric files to this public repository.
