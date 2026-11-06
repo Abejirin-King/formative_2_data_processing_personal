@@ -60,10 +60,9 @@ Run [`notebooks/04_model_training_evaluation.ipynb`](notebooks/04_model_training
 
 ## Assignment stages still to complete
 
-- Complete and validate the facial and voice preprocessing notebooks using the group's real consented recordings.
-- Run and review the baseline model training/evaluation notebook; interpret biometric scores cautiously because the genuine sample count is small.
-- Integrate the model outputs into the authorized/unauthorized transaction simulation.
-- Add the final report, video, contribution record, and processed feature datasets.
+- Run and validate the CLI transaction simulation with one authorized attempt, one face-mismatch attempt, and one voice-mismatch attempt.
+- Prepare the final report, simulation video, contribution record, and required processed feature datasets.
+- Review public-repository privacy before submission; raw facial images and voice recordings must not be publicly exposed without explicit informed consent and approval.
 
 Do not fabricate face or voice data. Those parts must be collected from the actual group participants with their consent.
 
