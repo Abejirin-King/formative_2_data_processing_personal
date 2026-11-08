@@ -74,7 +74,6 @@ def main():
     print(f"Transaction customers without social match: {len(tx_ids - social_ids)}")
     print(f"Social customers without transaction match: {len(social_ids - tx_ids)}")
 
-    # Aggregate repeated social records so each customer appears only once.
     social_summary = social.groupby("customer_id_candidate").agg(
         social_record_count=("customer_id_new", "size"),
         distinct_platform_count=("social_media_platform", "nunique"),
@@ -126,7 +125,6 @@ def main():
     social_summary.to_csv(out / "social_profiles_customer_level.csv", index=False)
     merged.to_csv(out / "customer_transactions_social_merged.csv", index=False)
 
-    # Conservative model table: identifiers and post-purchase amount/rating are excluded.
     excluded = {"transaction_id", "customer_id_legacy", "purchase_date",
                 "purchase_amount", "customer_rating", "product_category"}
     features = [c for c in merged.columns if c not in excluded]
