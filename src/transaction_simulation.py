@@ -67,7 +67,6 @@ def load_demo_samples():
                 f"{participant} needs at least two original face images; "
                 "the training notebook's held-out split cannot be reproduced."
             )
-        # Notebook 04 reserves the final sorted original source for testing.
         selected_path = paths[-1]
         row = group[group["source_path"].eq(selected_path)].iloc[0]
         face_samples[participant] = row[face_cols].astype(float).to_numpy()
@@ -110,7 +109,6 @@ def load_demo_samples():
     splitter = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
     _, test_idx = next(splitter.split(X_product, y_product, groups))
 
-    # The model notebook trains on the complementary first fold.
     product_test = X_product.iloc[test_idx].copy().reset_index(drop=True)
     return face_samples, face_cols, voice_samples, voice_cols, product_test
 
