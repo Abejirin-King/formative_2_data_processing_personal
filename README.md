@@ -2,15 +2,15 @@
 
 ## Introduction
 
-This project was completed for the Formative 2 assignment. The aim was to work with three types of data: customer information, facial images and voice recordings. I prepared the datasets, extracted features, trained machine-learning models and put the biometric models into a small transaction simulation.
+This project was completed for the Formative 2 assignment. Three types of data were processed: customer information, facial images and voice recordings. The datasets were prepared, features were extracted, machine-learning models were trained, and a local web application was developed to demonstrate multimodal transaction verification.
 
-The project has three main prediction tasks:
+The project includes three prediction tasks:
 
 1. Identify a participant from a facial image.
 2. Identify a participant from a voice recording.
 3. Predict a product category from customer transaction and social-profile information.
 
-The face and voice models are small classroom experiments. They are not designed to be used for real financial security.
+The face and voice models are small classroom experiments. They are not designed for real financial security.
 
 ## Project structure
 
@@ -39,9 +39,9 @@ src/
 
 The first notebook checks the two customer tables, including their dimensions, column types, missing values, duplicates and product-category distribution. It also investigates how the customer IDs in the two files might match.
 
-The social-profile file uses IDs with an `A` prefix, while the transaction file uses numeric IDs. The notebook tests removing the prefix as a possible way to match the records. This is an assumption that should be checked against the original dataset documentation.
+The social-profile file uses IDs with an `A` prefix, while the transaction file uses numeric IDs. Removing the prefix is tested as a possible way to match the records. This assumption should be checked against the original dataset documentation.
 
-Some customers appear more than once in the social-profile table. I grouped those records by customer before merging them with the transaction table. This avoids creating extra transaction rows through a many-to-many join.
+Some customers appear more than once in the social-profile table. Social-profile records are grouped by customer before the transaction table is merged. This avoids creating extra transaction rows through a many-to-many join.
 
 The processed files are saved in `data/processed/`:
 
@@ -50,7 +50,7 @@ The processed files are saved in `data/processed/`:
 - `customer_transactions_social_merged.csv`
 - `tabular_model_features.csv`
 
-To run the standalone preprocessing script:
+The standalone preprocessing script can be run from the project root:
 
 ```bash
 pip install -r requirements.txt
@@ -59,9 +59,9 @@ python src/preprocess_tabular.py
 
 ### Facial image data
 
-The image notebook uses the group's collected images. Each participant has neutral, smiling and surprised expressions. The notebook checks the files, identifies participant and expression labels, detects faces and resizes the face crops to 128 × 128 pixels.
+The image notebook uses the group's collected images. Each participant has neutral, smiling and surprised expressions. The files are checked, participant and expression labels are identified, faces are detected, and face crops are resized to 128 × 128 pixels.
 
-I applied image augmentation using small rotations, horizontal flipping and contrast normalization. HOG features were then extracted and saved in `data/images/processed/image_features.csv`.
+Image augmentation is performed using small rotations, horizontal flipping and contrast normalisation. HOG features are then extracted and saved in `data/images/processed/image_features.csv`.
 
 The participant labels used in the project are:
 
@@ -76,53 +76,72 @@ There were 12 original images. Face detection succeeded for 11 images, while one
 
 ### Voice recordings
 
-The audio notebook processes two phrases from each participant: “Yes, approve” and “Confirm transaction”. It checks the recordings, converts them to mono and resamples them to 16 kHz.
+The audio notebook processes two phrases from each participant: “Yes, approve” and “Confirm transaction”. The recordings are checked, converted to mono and resampled to 16 kHz.
 
-I used pitch shifting, time stretching and added low-level noise to create augmented versions of the recordings. The feature extraction step calculates MFCC statistics, spectral roll-off and RMS energy. The results are saved in `data/audio/processed/audio_features.csv`.
+Pitch shifting, time stretching and low-level noise are applied to create augmented versions of the recordings. The feature extraction step calculates MFCC statistics, spectral roll-off and RMS energy. The results are saved in `data/audio/processed/audio_features.csv`.
 
-The notebook found eight original WAV recordings, with two recordings for each of the four participants. It created 48 rows in the augmented audio feature table. These augmented rows are not additional independent voice samples.
+Eight original WAV recordings were found, with two recordings for each of the four participants. The augmented audio feature table contained 48 rows. These augmented rows are not additional independent voice samples.
 
 ## Model training and evaluation
 
-The fourth notebook trains and compares models for all three tasks.
+The fourth notebook trains and compares models for all three tasks:
 
 - **Facial identity:** Linear SVM and Random Forest using HOG features.
 - **Voice identification:** RBF SVM and Random Forest using audio features.
 - **Product category:** Logistic Regression and Random Forest using customer features.
 
-The notebook reports accuracy, precision, recall, F1-score and log loss where probability estimates are available. It also produces classification reports and confusion matrices.
+The evaluation includes accuracy, precision, recall, F1-score and log loss where probability estimates are available. Classification reports and confusion matrices are also produced.
 
-The face and voice test sets are very small, with only four held-out original samples each. Both models achieved perfect scores on these small test sets, but that does not show that they would work reliably with new people or recording conditions.
+The face and voice test sets are very small, with only four held-out original samples each. Both models achieved perfect scores on these small test sets, but this does not demonstrate reliable performance with new people or different recording conditions.
 
 The product-category models achieved 22.58% accuracy on a five-class task. This is only slightly above the 20% random-choice baseline, so the product predictions are weak and should be treated as experimental.
 
-The notebook saves the trained models in `models/` and the evaluation tables in `data/processed/model_evaluation/`.
+The trained models are saved in `models/`, while evaluation tables are saved in `data/processed/model_evaluation/`.
 
-## Transaction simulation
+## Local transaction verification application
 
-The command-line simulation uses the saved feature tables and trained models. It asks the operator to choose:
+The transaction simulation is a small Flask web application that runs locally. It provides a browser-based form instead of requiring sample selection through the command line.
 
-1. The participant account being claimed.
-2. The participant whose held-out face sample is presented.
-3. The participant whose held-out voice sample is presented.
+The application asks the operator to:
 
-The system compares the predicted face and voice identities with the claimed account. The transaction is rejected if either identity does not match. If both match, the product-category model provides an experimental category suggestion.
+1. Enter the account holder's name: Ella, King, Nicole or Sarah.
+2. Upload a facial image in JPG or PNG format.
+3. Upload a voice recording in WAV format.
+4. Select **Verify and process transaction**.
 
-Run the simulation from the project root after running the preprocessing and model-training notebooks:
+The uploaded image is processed using the same face-detection and HOG feature extraction approach used during preprocessing. The voice recording is converted to mono, resampled to 16 kHz and processed using the same MFCC, spectral roll-off and RMS-energy feature calculations used in the audio notebook.
+
+The face model and voice model independently predict the participant's identity. Both predictions must match the entered account name for the transaction to be authorised. If either check fails, the transaction is rejected. When both checks pass, the product-category model produces an experimental category suggestion using a held-out example transaction from the customer dataset.
+
+The uploaded image and audio are processed in memory and are not saved by the application.
+
+### Starting the local application
+
+Run the notebooks in the order listed below first so that the feature files and trained models are available. Then run the following command from the project root:
 
 ```bash
 python src/transaction_simulation.py
 ```
 
-For the demonstration, test one matching face-and-voice combination and two mismatches: one where the face does not match the claimed account, and another where the voice does not match.
+Open the local address shown in the terminal:
 
-This simulation uses recorded feature rows from the notebooks. It does not capture a live camera image or microphone recording. It also has no liveness detection or anti-spoofing, so it must not be used to authorize real transactions.
+```text
+http://127.0.0.1:5000
+```
+
+The application is intended for local demonstration on the computer where the project and trained model files are stored.
+
+For the demonstration, test one authorised attempt using the matching participant's face and voice, then test unauthorised attempts by uploading a face or voice sample belonging to a different participant.
+
+The product-category suggestion is a demonstration output based on a held-out customer example. It is not a personalised recommendation based on the uploaded biometric files.
+
+This simulation has no liveness detection or anti-spoofing. The models were trained on very small datasets, so the application must not be used to authorise real transactions.
 
 ## Main limitations
 
 The biggest limitation is the small amount of biometric data. There are only four participants, three original images per participant and two original voice recordings per participant. Augmentation increases the number of training rows, but it does not replace collecting more genuine samples.
 
-The product-category model also performed poorly. More customer data, a review of the customer-ID matching assumption and further feature experiments would be needed to improve it.
+The product-category model also performed poorly. More customer data, verification of the customer-ID matching assumption and further feature experiments would be needed to improve it.
 
 The results should therefore be understood as a demonstration of the preprocessing and modelling workflow rather than a finished biometric or recommendation system.
 
@@ -135,7 +154,7 @@ Install the packages listed in `requirements.txt`, then run the notebooks in thi
 3. `03_audio_preprocessing.ipynb`
 4. `04_model_training_evaluation.ipynb`
 
-The transaction simulation can be run after the models and processed datasets have been generated.
+The local transaction verification application can be started after the processed datasets and trained models have been generated.
 
 ## Data and consent
 
