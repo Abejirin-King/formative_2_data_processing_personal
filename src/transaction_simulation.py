@@ -180,7 +180,15 @@ def load_resources():
     _, test_indices = next(splitter.split(product_x, product_y, groups))
     product_demo_rows = product_x.iloc[test_indices].reset_index(drop=True)
 
-    return face_model, voice_model, product_model, face_columns, audio_columns, detector, product_demo_rows
+    return {
+        "face_model": face_model,
+        "voice_model": voice_model,
+        "product_model": product_model,
+        "face_columns": face_columns,
+        "audio_columns": audio_columns,
+        "detector": detector,
+        "product_demo_rows": product_demo_rows,
+    }
 
 
 def extract_face_features(file_bytes, detector, feature_columns):
