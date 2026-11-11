@@ -58,7 +58,7 @@ The assignment's command-line requirement is supported by `src/transaction_cli.p
 python src/transaction_cli.py --name Nicole --face data/images/raw/nicole_neutral.jpg --voice data/audio/raw/nicole_yes_approve.wav
 ```
 
-The file paths above are examples and should be replaced with the actual filenames in the local project. A confidence threshold can be supplied with `--threshold`; the default demonstration threshold is 0.60. Predictions below the threshold are treated as unknown. Both the face and voice predictions must match the claimed participant before the transaction is accepted.
+The file paths above are examples and should be replaced with the actual filenames in the local project. A confidence threshold can be supplied with `--threshold`; the default demonstration threshold is 0.60. Predictions below the threshold are treated as unknown. Both the face and voice predictions must match the claimed participant before the transaction is accepted. After successful verification, the CLI asks for the `customer_id_legacy` associated with that participant, retrieves that customer's transaction features and displays a product-category prediction with the top category scores. The entered customer ID must correspond to the verified participant; the current dataset does not contain a confirmed mapping from the four participant names to customer IDs.
 
 The threshold is a classroom demonstration setting, not a security-grade threshold. The biometric dataset is too small to establish reliable confidence calibration or real-world unknown-person rejection.
 
