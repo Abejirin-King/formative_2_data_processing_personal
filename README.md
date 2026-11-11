@@ -30,8 +30,52 @@ notebooks/
   04_model_training_evaluation.ipynb
 src/
   preprocess_tabular.py
+  train_face_model.py
+  train_voice_model.py
+  train_product_model.py
+  transaction_cli.py
   transaction_simulation.py
 ```
+
+
+## Standalone model scripts
+
+Each modelling task also has its own training script:
+
+```bash
+python src/train_face_model.py
+python src/train_voice_model.py
+python src/train_product_model.py
+```
+
+These scripts use the processed feature tables created by notebooks 01-03 and save the trained models in `models/`. The training notebook remains available for the full comparison and evaluation results.
+
+## Command-line transaction simulation
+
+The assignment's command-line requirement is supported by `src/transaction_cli.py`. The command accepts a claimed participant name, an image path and a WAV path:
+
+```bash
+python src/transaction_cli.py --name Nicole --face data/images/raw/nicole_neutral.jpg --voice data/audio/raw/nicole_yes_approve.wav
+```
+
+The file paths above are examples and should be replaced with the actual filenames in the local project. A confidence threshold can be supplied with `--threshold`; the default demonstration threshold is 0.60. Predictions below the threshold are treated as unknown. Both the face and voice predictions must match the claimed participant before the transaction is accepted.
+
+The threshold is a classroom demonstration setting, not a security-grade threshold. The biometric dataset is too small to establish reliable confidence calibration or real-world unknown-person rejection.
+
+The Flask localhost interface in `src/transaction_simulation.py` is retained as an additional demonstration interface. It applies the same default 0.60 confidence threshold.
+
+## Multimodal decision logic
+
+The claimed name is mapped to a participant ID. The uploaded face is converted into HOG features and the uploaded voice recording is converted into MFCC, spectral roll-off, RMS-energy and duration features. Separate models predict the participant identity from each modality.
+
+The decision follows an AND rule:
+
+1. The face model must return a known participant with confidence at or above the threshold.
+2. The voice model must return a known participant with confidence at or above the threshold.
+3. Both predicted participant IDs must match the claimed account.
+4. Only after both checks pass may the product-category model run.
+
+A failed or low-confidence face or voice result rejects the transaction. A successful face check cannot override a failed voice check, and vice versa.
 
 ## Data preparation
 
