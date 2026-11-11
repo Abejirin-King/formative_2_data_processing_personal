@@ -1,6 +1,6 @@
 task,model,test_samples,accuracy,precision_weighted,recall_weighted,f1_weighted,log_loss
-facial_identity,HOG + linear SVM,4,1.0,1.0,1.0,1.0,0.42079315409557955
-facial_identity,HOG + Random Forest,4,1.0,1.0,1.0,1.0,0.6100805143480238
+facial_identity,HOG + linear SVM,4,1.0,1.0,1.0,1.0,0.46249548978107047
+facial_identity,HOG + Random Forest,4,1.0,1.0,1.0,1.0,0.5453240716392849
 voiceprint_identification,MFCC + RBF SVM,4,1.0,1.0,1.0,1.0,0.9591575916221604
 voiceprint_identification,MFCC + Random Forest,4,1.0,1.0,1.0,1.0,0.613509737081524
 product_category,Logistic Regression,31,0.22580645161290322,0.16451612903225804,0.22580645161290322,0.18937381404174575,2.1795315008379608
