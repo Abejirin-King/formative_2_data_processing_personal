@@ -23,6 +23,7 @@ MERGED_DATA = PROCESSED / "customer_transactions_social_merged.csv"
 MODEL_DIR = ROOT / "models"
 CASCADE_PATH = DATA / "models" / "haarcascade_frontalface_default.xml"
 TARGET_SR = 16000
+CONFIDENCE_THRESHOLD = 0.60
 
 PARTICIPANTS = {
     "ella": "participant_01",
@@ -99,9 +100,9 @@ button:hover { background: #1249ad; }
 <div class="result">
 <h2>Verification result</h2>
 <p><strong>Claimed account:</strong> {{ result.claimed_name }}</p>
-<p><strong>Face model identified:</strong> {{ result.face_name }}
+<p><strong>Face model identified:</strong> {{ result.face_name }} ({{ result.face_confidence }})
 <span class="tag {{ 'pass' if result.face_ok else 'fail' }}">{{ 'PASS' if result.face_ok else 'FAIL' }}</span></p>
-<p><strong>Voice model identified:</strong> {{ result.voice_name }}
+<p><strong>Voice model identified:</strong> {{ result.voice_name }} ({{ result.voice_confidence }})
 <span class="tag {{ 'pass' if result.voice_ok else 'fail' }}">{{ 'PASS' if result.voice_ok else 'FAIL' }}</span></p>
 {% if result.authorized %}
 <div class="notice success"><strong>Transaction authorized.</strong><br>
@@ -374,8 +375,10 @@ def index():
             resources["voice_model"], audio_vector
         )
 
-        face_ok = face_prediction == claimed_id
-        voice_ok = voice_prediction == claimed_id
+        face_known = face_confidence is not None and face_confidence >= CONFIDENCE_THRESHOLD
+        voice_known = voice_confidence is not None and voice_confidence >= CONFIDENCE_THRESHOLD
+        face_ok = face_known and face_prediction == claimed_id
+        voice_ok = voice_known and voice_prediction == claimed_id
         authorized = face_ok and voice_ok
         category = None
         top_scores = None
@@ -398,8 +401,10 @@ def index():
 
         result = {
             "claimed_name": DISPLAY_NAMES[claimed_id],
-            "face_name": DISPLAY_NAMES.get(face_prediction, face_prediction),
-            "voice_name": DISPLAY_NAMES.get(voice_prediction, voice_prediction),
+            "face_name": DISPLAY_NAMES.get(face_prediction, face_prediction) if face_known else "Unknown",
+            "voice_name": DISPLAY_NAMES.get(voice_prediction, voice_prediction) if voice_known else "Unknown",
+            "face_confidence": f"{face_confidence:.1%}" if face_confidence is not None else "Unavailable",
+            "voice_confidence": f"{voice_confidence:.1%}" if voice_confidence is not None else "Unavailable",
             "face_ok": face_ok,
             "voice_ok": voice_ok,
             "authorized": authorized,
