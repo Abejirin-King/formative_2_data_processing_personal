@@ -83,7 +83,61 @@ def main():
         return
 
     print("\nIDENTITY VERIFIED.")
-    print("Product prediction is awaiting the confirmed participant-to-customer ID mapping.")
+    print("The product model will now use customer transaction features associated with the verified participant.")
+    customer_id = input(
+        f"Enter the customer_id_legacy associated with {DISPLAY_NAMES[claimed_id]}: "
+    ).strip()
+    if not customer_id:
+        print("No customer ID was supplied. Product prediction was not performed.")
+        return
+
+    product_features_path = ROOT / "data" / "processed" / "tabular_model_features.csv"
+    merged_path = ROOT / "data" / "processed" / "customer_transactions_social_merged.csv"
+    product_data = pd.read_csv(product_features_path)
+    merged_data = pd.read_csv(merged_path)
+    if len(product_data) != len(merged_data):
+        raise ValueError("Product feature rows do not align with the merged customer records.")
+
+    customer_ids = merged_data["customer_id_legacy"].astype(str).str.strip()
+    selected_indices = np.flatnonzero(customer_ids.to_numpy() == customer_id)
+    if len(selected_indices) == 0:
+        print(f"No transaction records were found for customer ID {customer_id}. Check the ID.")
+        return
+
+    excluded = {
+        "product_category", "transaction_id", "customer_id_legacy",
+        "customer_id_candidate", "customer_id_new", "purchase_amount",
+        "customer_rating", "purchase_date"
+    }
+    product_X = product_data.drop(
+        columns=[column for column in excluded if column in product_data.columns]
+    )
+    model_columns = list(resources["product_model"].feature_names_in_)
+    missing_columns = sorted(set(model_columns) - set(product_X.columns))
+    if missing_columns:
+        raise ValueError("Product model input columns are missing: " + ", ".join(missing_columns))
+
+    customer_rows = product_X.iloc[selected_indices][model_columns]
+    prediction = resources["product_model"].predict(customer_rows)
+    category = str(prediction[-1])
+
+    print("\nPRODUCT CATEGORY PREDICTION")
+    print(f"Verified participant: {DISPLAY_NAMES[claimed_id]}")
+    print(f"Associated customer ID: {customer_id}")
+    print(f"Transactions used: {len(customer_rows)}")
+    print(f"Predicted product category: {category}")
+
+    if hasattr(resources["product_model"], "predict_proba"):
+        probabilities = resources["product_model"].predict_proba(customer_rows)[-1]
+        ranking = sorted(
+            zip(resources["product_model"].classes_, probabilities),
+            key=lambda item: item[1], reverse=True
+        )[:3]
+        print("Top category scores:")
+        for label, score in ranking:
+            print(f"  {label}: {score:.1%}")
+
+    print("The customer ID must belong to the verified participant. This is an experimental category estimate.")
     print("This demo threshold is configurable and is not a security-grade calibration.")
 
 
