@@ -23,8 +23,8 @@ def parse_args():
     parser.add_argument("--name", required=True, help="Claimed account: Ella, King, Nicole or Sarah")
     parser.add_argument("--face", required=True, type=Path, help="Path to a JPG or PNG facial image")
     parser.add_argument("--voice", required=True, type=Path, help="Path to a WAV voice recording")
-    parser.add_argument("--threshold", type=float, default=0.60,
-                        help="Minimum model probability required for an identity match (default: 0.60)")
+    parser.add_argument("--threshold", type=float, default=0.75,
+                        help="Minimum model probability required for an identity match (default: 0.75)")
     return parser.parse_args()
 
 
@@ -67,7 +67,7 @@ def main():
     face_ok = face_known and face_prediction == claimed_id
     voice_ok = voice_known and voice_prediction == claimed_id
 
-    print("\nMULTIMODAL VERIFICATION")
+    print("\\nMULTIMODAL VERIFICATION")
     print(f"Claimed account: {DISPLAY_NAMES[claimed_id]}")
     print(f"Face result: {DISPLAY_NAMES.get(face_prediction, face_prediction)} "
           f"({face_confidence:.1%} confidence)" if face_confidence is not None
@@ -79,10 +79,10 @@ def main():
     print(f"Voice check: {'PASS' if voice_ok else 'REJECT'}")
 
     if not (face_ok and voice_ok):
-        print("\nTRANSACTION REJECTED: both identity checks must match the claimed account.")
+        print("\\nTRANSACTION REJECTED: both identity checks must match the claimed account.")
         return
 
-    print("\nIDENTITY VERIFIED.")
+    print("\\nIDENTITY VERIFIED.")
     print("The product model will now use customer transaction features associated with the verified participant.")
     customer_id = input(
         f"Enter the customer_id_legacy associated with {DISPLAY_NAMES[claimed_id]}: "
@@ -121,7 +121,7 @@ def main():
     prediction = resources["product_model"].predict(customer_rows)
     category = str(prediction[-1])
 
-    print("\nPRODUCT CATEGORY PREDICTION")
+    print("\\nPRODUCT CATEGORY PREDICTION")
     print(f"Verified participant: {DISPLAY_NAMES[claimed_id]}")
     print(f"Associated customer ID: {customer_id}")
     print(f"Transactions used: {len(customer_rows)}")
