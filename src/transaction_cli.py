@@ -16,6 +16,16 @@ from transaction_simulation import (
 )
 
 
+# Demo-only links between verified participants and existing customer records.
+# These IDs are assigned for demonstration and are NOT verified personal identities.
+CUSTOMER_IDS = {
+    "participant_01": "100",  # Ella
+    "participant_02": "101",  # King
+    "participant_03": "102",  # Nicole
+    "participant_04": "103",  # Sarah
+}
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Classroom command-line multimodal transaction verification."
@@ -84,12 +94,12 @@ def main():
 
     print("\\nIDENTITY VERIFIED.")
     print("The product model will now use customer transaction features associated with the verified participant.")
-    customer_id = input(
-        f"Enter the customer_id_legacy associated with {DISPLAY_NAMES[claimed_id]}: "
-    ).strip()
-    if not customer_id:
-        print("No customer ID was supplied. Product prediction was not performed.")
-        return
+    customer_id = CUSTOMER_IDS.get(claimed_id)
+    if customer_id is None:
+        raise ValueError(
+            f"No demo customer ID is configured for {DISPLAY_NAMES[claimed_id]}."
+        )
+    print(f"Using demo customer ID: {customer_id}")
 
     product_features_path = ROOT / "data" / "processed" / "tabular_model_features.csv"
     merged_path = ROOT / "data" / "processed" / "customer_transactions_social_merged.csv"
